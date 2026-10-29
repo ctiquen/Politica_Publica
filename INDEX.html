@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Economía Política: Sen, Fraser y Paz en Colombia</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#090d16',
+                        cardBg: '#131b2e',
+                        cardHover: '#1e293b',
+                        accentGreen: '#10b981',
+                        accentIndigo: '#6366f1',
+                        accentAmber: '#f59e0b',
+                        accentRose: '#f43f5e'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- QRCode.js CDN for Dynamic QR Code Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Firebase JS SDK (v11.6.1) for Realtime Sync -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration setup
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : {
+                // Default fallback demo config for public sandbox
+                apiKey: "AIzaSyDemoKeyForPublicSimulationOnly123",
+                authDomain: "simulador-paz.firebaseapp.com",
+                projectId: "simulador-paz",
+                storageBucket: "simulador-paz.appspot.com",
+                messagingSenderId: "123456789",
+                appId: "1:123456789:web:abcdef123456"
+            };
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'simulador-paz-session';
+
+        let app, db, auth;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            // Authenticate first
+            const initAuth = async () => {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            };
+
+            await initAuth();
+
+            // Make db & doc references accessible globally for script
+            window.sessionDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'liveSession', 'current');
+            window.setDoc = setDoc;
+            window.onSnapshot = onSnapshot;
+
+            window.initRealtimeListeners();
+        } catch (e) {
+            console.warn("Realtime sync unavailable or restricted, running in local fallback mode.", e);
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .glass-panel {
+            background: rgba(19, 27, 46, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glow-indigo {
+            box-shadow: 0 0 25px rgba(99, 102, 241, 0.25);
+        }
+        .glow-green {
+            box-shadow: 0 0 25px rgba(16, 185, 129, 0.25);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #334155; }
+    </style>
+</head>
+<body class="bg-darkBg text-slate-100 min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
+
+    <!-- Header / Navbar -->
+    <header class="glass-panel sticky top-0 z-50 border-b border-slate-800 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-gradient-to-tr from-indigo-600 to-emerald-500 p-2.5 rounded-xl text-white shadow-lg">
+                <i class="fa-solid fa-scale-balanced text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">
+                    Simulador de Economía Política
+                </h1>
+                <p class="text-xs text-slate-400">Sen • Fraser • Acuerdo Final de Paz de Colombia</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-3">
+            <button onclick="openQRModal()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-md flex items-center space-x-1.5 border border-emerald-400/30">
+                <i class="fa-solid fa-qrcode text-sm"></i>
+                <span>QR para Votar</span>
+            </button>
+            <span id="roleBadge" class="hidden sm:inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">
+                <i class="fa-solid fa-chalkboard-user mr-1.5"></i> <span id="roleBadgeText">Modo Presentador</span>
+            </span>
+            <button onclick="openResetModal()" class="text-xs text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-all border border-slate-700">
+                <i class="fa-solid fa-rotate-right mr-1"></i> Reiniciar
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow container mx-auto px-4 py-8 max-w-5xl">
+
+        <!-- SCREEN VOTER WAITING: VISTA PARA ESTUDIANTES / CELULAR CUANDO ESPERAN -->
+        <section id="screen-voter-waiting" class="hidden text-center space-y-6 py-12">
+            <div class="glass-panel p-8 rounded-3xl max-w-md mx-auto space-y-5 border border-indigo-500/30 shadow-2xl">
+                <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-full flex items-center justify-center mx-auto text-2xl border border-indigo-500/40 animate-pulse">
+                    <i class="fa-solid fa-hourglass-half"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-white">Esperando la votación...</h3>
+                <p class="text-xs text-slate-300 leading-relaxed">
+                    Mira la pantalla principal de la presentación. Tan pronto el profesor/presentador habilite la pregunta, las opciones de voto aparecerán aquí en tu celular.
+                </p>
+                <div class="pt-2 flex items-center justify-center space-x-2 text-[11px] text-emerald-400">
+                    <i class="fa-solid fa-circle text-[8px] animate-ping"></i>
+                    <span>Conectado en vivo a la sesión</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- SCREEN 1: INTRODUCCIÓN Y CONFIGURACIÓN DEL PROFESOR -->
+        <section id="screen-intro" class="space-y-6">
+            <div class="glass-panel p-8 rounded-2xl glow-indigo relative overflow-hidden">
+                <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+                <div class="absolute -left-10 -top-10 w-64 h-64 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                <div class="max-w-2xl relative z-10 space-y-4">
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <i class="fa-solid fa-graduation-cap mr-2"></i> Exposición Académica Interactiva
+                    </span>
+                    <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
+                        Justicia, Desarrollo y Paz Territorial
+                    </h2>
+                    <p class="text-slate-300 text-sm sm:text-base leading-relaxed">
+                        Este simulador interactivo permite analizar los dilemas de economía política en el posconflicto colombiano bajo los marcos teóricos de 
+                        <strong class="text-indigo-400">Amartya Sen</strong> (Libertad como desarrollo y enfoque de capacidades) y 
+                        <strong class="text-emerald-400">Nancy Fraser</strong> (Redistribución, reconocimiento y paridad participativa).
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8 pt-6 border-t border-slate-800/80 relative z-10">
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                        <div class="text-indigo-400 font-semibold mb-1"><i class="fa-solid fa-user-tie mr-2"></i> 1. Panel Docente</div>
+                        <p class="text-xs text-slate-400">Controla el ritmo de la sesión, activa el temporizador y modera el debate en clase.</p>
+                    </div>
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                        <div class="text-emerald-400 font-semibold mb-1"><i class="fa-solid fa-people-group mr-2"></i> 2. Votación en Vivo</div>
+                        <p class="text-xs text-slate-400">La audiencia vota en dilemas reales con cuenta regresiva y visualización Chart.js.</p>
+                    </div>
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                        <div class="text-amber-400 font-semibold mb-1"><i class="fa-solid fa-book-open mr-2"></i> 3. Debrief Teórico</div>
+                        <p class="text-xs text-slate-400">Explicación post-votación conectando las decisiones con Sen, Fraser y el Acuerdo de Paz.</p>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex flex-wrap items-center gap-4 relative z-10">
+                    <button onclick="startSimulation()" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-semibold px-6 py-3 rounded-xl shadow-lg transition-all flex items-center space-x-2">
+                        <span>Iniciar Simulación</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                    <button onclick="openQRModal()" class="bg-slate-800/90 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 font-semibold px-5 py-3 rounded-xl shadow-lg transition-all flex items-center space-x-2">
+                        <i class="fa-solid fa-qrcode"></i>
+                        <span>Proyectar Código QR en Pantalla</span>
+                    </button>
+                    <div class="text-xs text-slate-400 flex items-center space-x-2">
+                        <i class="fa-solid fa-circle-info text-indigo-400"></i>
+                        <span>Consta de 4 dilemas clave de la Reforma Rural y Paz en Colombia.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SCREEN 2: DILEMA / PREGUNTA (VOTACIÓN) -->
+        <section id="screen-dilemma" class="hidden space-y-6">
+            <!-- Progress Bar -->
+            <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+                <span id="dilemmaCounter" class="font-semibold text-indigo-400 uppercase tracking-wider">Dilema 1 de 4</span>
+                <span id="dilemmaCategoryTag" class="bg-slate-800 px-3 py-1 rounded-full text-slate-300">Reforma Rural Integral</span>
+            </div>
+            <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div id="progressBar" class="bg-gradient-to-r from-indigo-500 to-emerald-500 h-full w-1/4 transition-all duration-500"></div>
+            </div>
+
+            <!-- Dilemma Card -->
+            <div class="glass-panel p-6 sm:p-8 rounded-2xl space-y-6">
+                <div>
+                    <h3 id="dilemmaTitle" class="text-xl sm:text-2xl font-bold text-white mb-3">Título del Dilema</h3>
+                    <p id="dilemmaContext" class="text-slate-300 text-sm sm:text-base leading-relaxed bg-slate-900/40 p-4 rounded-xl border border-slate-800/80">
+                        Contexto del dilema...
+                    </p>
+                </div>
+
+                <!-- Timer & Voting Control Box -->
+                <div class="bg-slate-900/70 p-4 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-4">
+                    <div class="flex items-center space-x-3">
+                        <div id="timerIcon" class="w-10 h-10 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-lg border border-amber-500/30">
+                            <i class="fa-solid fa-stopwatch"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400 font-medium">Temporizador de Votación</div>
+                            <div id="timerDisplay" class="text-xl font-bold text-white">30s</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button id="btnStartTimer" onclick="startTimer()" class="bg-amber-600 hover:bg-amber-500 text-white font-medium px-4 py-2 rounded-lg text-xs transition-all flex items-center space-x-2 shadow">
+                            <i class="fa-solid fa-play"></i>
+                            <span>Iniciar Cuenta Regresiva</span>
+                        </button>
+                        <button id="btnSimulateVote" onclick="simulateAudienceVotes()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2 rounded-lg text-xs transition-all flex items-center space-x-2 shadow">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span>Simular Votos de la Clase</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Options List -->
+                <div class="space-y-3" id="optionsContainer">
+                    <!-- Populated dynamically -->
+                </div>
+
+                <!-- Message after voting for student -->
+                <div id="voterSubmittedMsg" class="hidden p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-center space-y-1">
+                    <div class="text-emerald-400 font-bold text-sm"><i class="fa-solid fa-circle-check mr-2"></i>¡Tu voto ha sido registrado!</div>
+                    <div class="text-xs text-slate-300">Observa la pantalla principal para ver los resultados en vivo.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SCREEN 3: RESULTADOS Y GRÁFICO (CHART.JS) -->
+        <section id="screen-results" class="hidden space-y-6">
+            <div class="glass-panel p-6 sm:p-8 rounded-2xl space-y-6">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-800 pb-4">
+                    <div>
+                        <span class="text-xs font-semibold text-emerald-400 uppercase tracking-wider"><i class="fa-solid fa-chart-pie mr-1"></i> Resultados de la Audiencia</span>
+                        <h3 class="text-2xl font-bold text-white mt-1">Votación en Sala</h3>
+                    </div>
+                    <button onclick="goToDebrief()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold px-5 py-2.5 rounded-xl text-xs transition-all shadow-lg flex items-center space-x-2">
+                        <span>Ver Análisis Teórico (Sen & Fraser)</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 h-72 sm:h-80 flex items-center justify-center relative">
+                        <canvas id="resultsChart"></canvas>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-2">
+                            <h4 class="text-sm font-semibold text-indigo-300 flex items-center">
+                                <i class="fa-solid fa-lightbulb mr-2"></i> Opción Ganadora de la Clase
+                            </h4>
+                            <p id="winningOptionText" class="text-sm text-slate-200 font-medium">Analizando votos...</p>
+                        </div>
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-2">
+                            <h4 class="text-sm font-semibold text-amber-300 flex items-center">
+                                <i class="fa-solid fa-bolt mr-2"></i> Tendencia General
+                            </h4>
+                            <p id="trendSummaryText" class="text-xs text-slate-300 leading-relaxed">
+                                La audiencia muestra inclinación hacia modelos participativos...
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SCREEN 4: DEBRIEF / EXPLICACIÓN TEÓRICA -->
+        <section id="screen-debrief" class="hidden space-y-6">
+            <div class="glass-panel p-6 sm:p-8 rounded-2xl space-y-6">
+                <div class="border-b border-slate-800 pb-4">
+                    <span class="text-xs font-semibold text-indigo-400 uppercase tracking-wider"><i class="fa-solid fa-graduation-cap mr-1"></i> Marco Conceptual Post-Votación</span>
+                    <h3 id="debriefTitle" class="text-2xl font-bold text-white mt-1">Análisis de Consecuencias</h3>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Amartya Sen Box -->
+                    <div class="bg-slate-900/70 p-5 rounded-xl border border-indigo-900/40 space-y-3 relative overflow-hidden">
+                        <div class="absolute -right-6 -bottom-6 w-32 h-32 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none"></div>
+                        <div class="flex items-center space-x-3 text-indigo-400 font-bold text-base">
+                            <div class="p-2 bg-indigo-950 rounded-lg border border-indigo-800/60"><i class="fa-solid fa-compass"></i></div>
+                            <span>Perspectiva de Amartya Sen</span>
+                        </div>
+                        <p id="senDebriefText" class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                            Contenido sobre desarrollo como libertad, capacidades y agencia...
+                        </p>
+                    </div>
+
+                    <!-- Nancy Fraser Box -->
+                    <div class="bg-slate-900/70 p-5 rounded-xl border border-emerald-900/40 space-y-3 relative overflow-hidden">
+                        <div class="absolute -right-6 -bottom-6 w-32 h-32 bg-emerald-600/10 rounded-full blur-2xl pointer-events-none"></div>
+                        <div class="flex items-center space-x-3 text-emerald-400 font-bold text-base">
+                            <div class="p-2 bg-emerald-950 rounded-lg border border-emerald-800/60"><i class="fa-solid fa-scale-unbalanced"></i></div>
+                            <span>Perspectiva de Nancy Fraser</span>
+                        </div>
+                        <p id="fraserDebriefText" class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                            Contenido sobre redistribución, reconocimiento y representación...
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Peace Accord Connection -->
+                <div class="bg-slate-900/60 p-5 rounded-xl border border-slate-800 space-y-2">
+                    <h4 class="text-sm font-bold text-amber-300 flex items-center">
+                        <i class="fa-solid fa-dove mr-2 text-amber-400"></i> Aplicación en el Acuerdo Final de Paz de Colombia
+                    </h4>
+                    <p id="peaceAccordionText" class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        Conexión directa con los puntos del acuerdo...
+                    </p>
+                </div>
+
+                <div class="flex justify-end pt-2">
+                    <button onclick="nextDilemma()" class="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-semibold px-6 py-3 rounded-xl text-xs transition-all shadow-lg flex items-center space-x-2">
+                        <span id="nextButtonText">Siguiente Dilema</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- SCREEN 5: REPORTE DE GESTIÓN FINAL -->
+        <section id="screen-report" class="hidden space-y-6">
+            <div class="glass-panel p-6 sm:p-8 rounded-2xl space-y-6">
+                <div class="border-b border-slate-800 pb-4 text-center sm:text-left flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <span class="text-xs font-semibold text-emerald-400 uppercase tracking-wider"><i class="fa-solid fa-file-invoice mr-1"></i> Evaluación Final de la Sesión</span>
+                        <h3 class="text-2xl font-bold text-white mt-1">Reporte de Economía Política</h3>
+                    </div>
+                    <button onclick="openResetModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all shadow">
+                        <i class="fa-solid fa-rotate-right mr-1.5"></i> Nueva Simulación
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 text-center">
+                        <div class="text-xs text-slate-400 font-medium mb-1">Índice de Capacidades (Sen)</div>
+                        <div id="indexSen" class="text-2xl font-extrabold text-indigo-400">84%</div>
+                        <div class="text-[10px] text-slate-500 mt-1">Enfoque en libertad y expansión de agencia</div>
+                    </div>
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 text-center">
+                        <div class="text-xs text-slate-400 font-medium mb-1">Paridad & Justicia (Fraser)</div>
+                        <div id="indexFraser" class="text-2xl font-extrabold text-emerald-400">78%</div>
+                        <div class="text-[10px] text-slate-500 mt-1">Balance redistribución y reconocimiento</div>
+                    </div>
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 text-center">
+                        <div class="text-xs text-slate-400 font-medium mb-1">Sostenibilidad del Acuerdo</div>
+                        <div id="indexPeace" class="text-2xl font-extrabold text-amber-400">81%</div>
+                        <div class="text-[10px] text-slate-500 mt-1">Viabilidad de la Reforma Rural Integral</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4">
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 h-64 flex items-center justify-center">
+                        <canvas id="summaryRadarChart"></canvas>
+                    </div>
+                    <div class="bg-slate-900/60 p-5 rounded-xl border border-slate-800 space-y-3 flex flex-col justify-center">
+                        <h4 class="text-sm font-bold text-white flex items-center">
+                            <i class="fa-solid fa-award text-amber-400 mr-2"></i> Conclusiones de la Exposición
+                        </h4>
+                        <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                            Las decisiones tomadas por la audiencia reflejan que la implementación del Acuerdo Final de Paz en Colombia no es meramente técnica, sino un ejercicio profundo de <strong>economía política institucional</strong>.
+                        </p>
+                        <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                            Sin la superación de las asimetrías de poder señaladas por Fraser y la ampliación de capacidades productivas defendida por Sen, la estabilidad territorial y la Reforma Rural Integral enfrentarán barreras estructurales complejas.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="glass-panel border-t border-slate-800 text-center py-4 text-xs text-slate-500">
+        Simulador Interactivo de Economía Política &bull; Amartya Sen & Nancy Fraser &bull; Acuerdo de Paz de Colombia &copy; 2026
+    </footer>
+
+    <!-- MODAL DE CÓDIGO QR GIGANTE PARA EL SALÓN DE CLASES -->
+    <div id="qrModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="glass-panel p-6 sm:p-8 rounded-3xl max-w-lg w-full space-y-6 border border-indigo-500/30 shadow-2xl relative text-center">
+            <button onclick="closeQRModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800 p-2 rounded-full transition-all">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+            
+            <div class="space-y-2">
+                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-block">
+                    <i class="fa-solid fa-mobile-screen-button mr-1.5"></i> Votación desde Celular
+                </span>
+                <h3 class="text-2xl font-extrabold text-white">Escanea para Unirte a la Sesión</h3>
+                <p class="text-xs text-slate-300">
+                    Apunta la cámara de tu celular para ingresar al simulador interactivo y votar en vivo.
+                </p>
+            </div>
+
+            <!-- QR Container -->
+            <div class="bg-white p-5 rounded-2xl inline-block shadow-2xl border-4 border-indigo-500/40 my-2">
+                <div id="qrcodeCanvas" class="flex justify-center items-center"></div>
+            </div>
+
+            <!-- Custom URL Input (en caso de usar Vercel, Netlify, GitHub Pages o servidor local) -->
+            <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-2 text-left">
+                <div id="blobWarning" class="hidden p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-[11px] text-amber-300">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+                    <span><strong>Atención:</strong> La URL actual es local (<code>blob:</code>). Para que tus compañeros accedan, publica el archivo HTML en <strong>GitHub Pages, Netlify, o Vercel</strong> e ingresa aquí ese enlace.</span>
+                </div>
+                <label class="text-[11px] font-medium text-slate-400 block flex justify-between">
+                    <span>URL pública del Simulador:</span>
+                    <span class="text-indigo-400 cursor-pointer hover:underline" onclick="copyCurrentURL()"><i class="fa-regular fa-copy mr-1"></i>Copiar</span>
+                </label>
+                <div class="flex items-center space-x-2">
+                    <input id="qrUrlInput" type="text" value="" class="w-full bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg p-2 focus:outline-none focus:border-indigo-500" placeholder="https://tu-pagina.netlify.app">
+                    <button onclick="updateQRCode()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-all shrink-0">
+                        Actualizar
+                    </button>
+                </div>
+            </div>
+
+            <div class="text-[11px] text-slate-400 flex items-center justify-center space-x-2 pt-1">
+                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                <span>Listo para proyectar en el aula de clase.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification / Custom Alert Modal -->
+    <div id="customModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="glass-panel p-6 rounded-2xl max-w-md w-full space-y-4 border border-slate-700 shadow-2xl">
+            <div class="flex items-center space-x-3 text-amber-400">
+                <i class="fa-solid fa-circle-exclamation text-xl"></i>
+                <h4 id="modalTitle" class="text-base font-bold text-white">Aviso del Sistema</h4>
+            </div>
+            <p id="modalMessage" class="text-xs sm:text-sm text-slate-300">Mensaje de notificación...</p>
+            <div class="flex justify-end pt-2">
+                <button onclick="closeModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all">
+                    Entendido
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // Dilemmas Dataset
+        const dilemmas = [
+            {
+                id: 1,
+                category: "Punto 1: Reforma Rural Integral (RRI)",
+                title: "Dilema 1: Modelo Agrario vs. Redistribución de Tierras",
+                context: "En el marco de la Reforma Rural Integral, el Estado debe decidir cómo asignar 3 millones de hectáreas de tierras baldías y recuperadas. ¿Cuál debe ser la directriz económica prioritaria?",
+                options: [
+                    {
+                        text: "A) Modelo de agronegocios intensivo a gran escala orientado a la agroexportación para maximizar el PIB a corto plazo.",
+                        votes: 0,
+                        senImpact: 60,
+                        fraserImpact: 40,
+                        peaceImpact: 55,
+                        explanation: "Prioriza eficiencia macroeconómica pero perpetúa la concentración de tierras y la desigualdad estructural."
+                    },
+                    {
+                        text: "B) Reforma agraria redistributiva con entrega de títulos a pequeños productores, campesinado y mujeres rurales, acompañada de bienes públicos (asistencia técnica, vías terciarias y crédito).",
+                        votes: 0,
+                        senImpact: 95,
+                        fraserImpact: 90,
+                        peaceImpact: 95,
+                        explanation: "Sintonía perfecta con la redistribución de recursos de Fraser y la ampliación de capacidades productivas de Sen."
+                    },
+                    {
+                        text: "C) Conservación ambiental estricta sin titulación productiva para comunidades locales.",
+                        votes: 0,
+                        senImpact: 50,
+                        fraserImpact: 60,
+                        peaceImpact: 65,
+                        explanation: "Protege el ecosistema pero limita la autonomía económica y la subsistencia digna de las comunidades."
+                    },
+                    {
+                        text: "D) Mantener el statu quo del mercado de tierras sin intervención estatal directa.",
+                        votes: 0,
+                        senImpact: 30,
+                        fraserImpact: 20,
+                        peaceImpact: 30,
+                        explanation: "Consolida las asimetrías históricas de poder rural que originaron el conflicto armado."
+                    }
+                ],
+                senDebrief: "Amartya Sen argumenta en 'Development as Freedom' que el desarrollo requiere eliminar las principales fuentes de privación de libertad: la pobreza, la tiranía y la falta de oportunidades económicas. Titular la tierra y dotar de infraestructura amplía las 'capacidades' (capabilities) y la libertad instrumental de los campesinos para elegir la vida que valoran.",
+                fraserDebrief: "Nancy Fraser sostiene que la justicia requiere tanto la <strong>redistribución socioeconómica</strong> como el <strong>reconocimiento cultural</strong>. La propiedad de la tierra para el campesinado no es solo un activo económico, sino un mecanismo para corregir la dominación clasista y reconocer al campesinado como sujeto político legítimo.",
+                peaceAccord: "Conecta directamente con el Punto 1 del Acuerdo (RRI): creación del Fondo de Tierras, formalización masiva de la propiedad y cierre de la brecha campo-ciudad."
+            },
+            {
+                id: 2,
+                category: "Punto 4: Solución al Problema de Drogas Ilícitas (PNIS)",
+                title: "Dilema 2: Sustitución Voluntaria (PNIS) vs. Erradicación Forzosa",
+                context: "Ante los cultivos de uso ilícito en regiones vulnerables, el gobierno enfrenta presiones entre la erradicación forzosa militarizada y el Programa Nacional Integral de Sustitución (PNIS). ¿Qué política adoptar?",
+                options: [
+                    {
+                        text: "A) Erradicación forzosa inmediata con aspersión aérea y despliegue militar punitivo.",
+                        votes: 0,
+                        senImpact: 40,
+                        fraserImpact: 35,
+                        peaceImpact: 45,
+                        explanation: "Genera crisis humanitaria local y rompe el tejido social sin ofrecer alternativas sostenibles de ingresos."
+                    },
+                    {
+                        text: "B) Sustitución concertada con asistencia alimentaria temporal, proyectos productivos y seguridad jurídica para comunidades cocaleras.",
+                        votes: 0,
+                        senImpact: 92,
+                        fraserImpact: 95,
+                        peaceImpact: 90,
+                        explanation: "Fomenta la agencia humana y la autonomía económica, reconociendo a las comunidades marginadas."
+                    },
+                    {
+                        text: "C) Legalización total desregulada de la hoja de coca y sus derivados sin intervención del Estado.",
+                        votes: 0,
+                        senImpact: 65,
+                        fraserImpact: 50,
+                        peaceImpact: 55,
+                        explanation: "Reduce la violencia criminal pero desprotege a las economías campesinas frente al capital transnacional."
+                    },
+                    {
+                        text: "D) Ignorar el fenómeno en zonas rurales y focalizar la acción policial únicamente en puertos internacionales.",
+                        votes: 0,
+                        senImpact: 30,
+                        fraserImpact: 25,
+                        peaceImpact: 35,
+                        explanation: "Deja a los territorios bajo el control de actores armados ilegales."
+                    }
+                ],
+                senDebrief: "Para Sen, la vulnerabilidad ante shocks económicos o violencia extrema reduce la 'agencia' de los individuos. El PNIS transforma al campesino cocalero de un actor vulnerable y criminalizado en un agente económico autónomo con opciones legítimas de vida.",
+                fraserDebrief: "Fraser analiza cómo la marginación cultural y la falta de estatus llevan a la subalternidad. El reconocimiento institucional de las comunidades cocaleras como interlocutores válidos evita su estigmatización y garantiza la <strong>paridad participativa</strong>.",
+                peaceAccord: "Punto 4 del Acuerdo de Paz: Programa Nacional Integral de Sustitución de Cultivos (PNIS), sustitución voluntaria y planes de desarrollo alternativo territorial."
+            },
+            {
+                id: 3,
+                category: "Punto 2: Participación Política (CITREP)",
+                title: "Dilema 3: Inclusión Política y Circunscripciones Especiales (CITREP)",
+                context: "Para garantizar la voz de los territorios más golpeados por el conflicto en el Congreso, se discute el diseño de las Circunscripciones Transitorias Especiales de Paz (CITREP). ¿Cómo proceder?",
+                options: [
+                    {
+                        text: "A) Mantener el sistema electoral tradicional sin curules especiales, bajo el argumento de igualdad formal.",
+                        votes: 0,
+                        senImpact: 45,
+                        fraserImpact: 30,
+                        peaceImpact: 40,
+                        explanation: "La igualdad formal perpetúa la exclusión real de las regiones periféricas históricamente silenciadas."
+                    },
+                    {
+                        text: "B) Implementar las CITREP con garantías de financiación y participación activa de organizaciones de víctimas y campesinas.",
+                        votes: 0,
+                        senImpact: 90,
+                        fraserImpact: 98,
+                        peaceImpact: 92,
+                        explanation: "Garantiza la paridad de representación y la voz democrática en las decisiones públicas."
+                    },
+                    {
+                        text: "C) Asignar las curules directamente mediante designación ministerial centralizada.",
+                        votes: 0,
+                        senImpact: 35,
+                        fraserImpact: 40,
+                        peaceImpact: 50,
+                        explanation: "Anula la deliberación democrática y el principio de soberanía popular local."
+                    },
+                    {
+                        text: "D) Limitar la participación política exclusiva a excombatientes reincorporados.",
+                        votes: 0,
+                        senImpact: 50,
+                        fraserImpact: 55,
+                        peaceImpact: 60,
+                        explanation: "Excluye a las comunidades civiles no combatientes que también sufrieron el impacto del conflicto."
+                    }
+                ],
+                senDebrief: "Sen resalta que la democracia no se reduce a elecciones periódicas, sino a la garantía de discusión pública abierta y al ejercicio efectivo de la voz ciudadana. Las instituciones democráticas previenen hambrunas, injusticias y conflictos armados.",
+                fraserDebrief: "Fraser introduce la dimensión de la <strong>representación</strong> (el 'quién' de la justicia). La exclusión política global ocurre cuando las fronteras estatales o institucionales dejan fuera a los afectados. Las CITREP corrigen esta injusticia de marco.",
+                peaceAccord: "Punto 2 del Acuerdo de Paz: Participación política, ampliación democrática, nuevos partidos y Circunscripciones Especiales de Paz para las víctimas."
+            },
+            {
+                id: 4,
+                category: "Punto 6: Sostenibilidad Fiscal e Implementación",
+                title: "Dilema 4: Sostenibilidad Fiscal vs. Inversión Social Postconflicto",
+                context: "Con restricciones fiscales severas y una alta deuda pública, el gobierno debe decidir si prioriza el ajuste macroeconómico ortodoxo o una reforma tributaria progresiva para financiar la paz.",
+                options: [
+                    {
+                        text: "A) Recorte drástico del gasto social y de la implementación de los acuerdos para cumplir con la regla fiscal estricta.",
+                        votes: 0,
+                        senImpact: 35,
+                        fraserImpact: 30,
+                        peaceImpact: 35,
+                        explanation: "Prioriza métricas financieras a corto plazo pero profundiza las privaciones sociales y desestabiliza la paz territorial."
+                    },
+                    {
+                        text: "B) Reforma tributaria progresiva sobre grandes patrimonios y capitales para financiar la infraestructura social y rural del acuerdo.",
+                        votes: 0,
+                        senImpact: 94,
+                        fraserImpact: 96,
+                        peaceImpact: 95,
+                        explanation: "Conecta la redistribución fiscal estructural de Fraser con la expansión de capacidades y bienestar de Sen."
+                    },
+                    {
+                        text: "C) Emisión monetaria descontrolada sin respaldo fiscal para cubrir todo el presupuesto de paz.",
+                        votes: 0,
+                        senImpact: 40,
+                        fraserImpact: 45,
+                        peaceImpact: 30,
+                        explanation: "Genera hiperinflación que golpea severamente a los sectores populares y desarticula la economía."
+                    },
+                    {
+                        text: "D) Financiar el acuerdo exclusivamente mediante endeudamiento externo agresivo.",
+                        votes: 0,
+                        senImpact: 50,
+                        fraserImpact: 50,
+                        peaceImpact: 55,
+                        explanation: "Hipoteca la soberanía económica nacional ante organismos multilaterales."
+                    }
+                ],
+                senDebrief: "Sen argumenta que el crecimiento económico no es un fin en sí mismo, sino un medio para expandir las libertades humanas. Una política fiscal debe juzgarse por su impacto en las capacidades básicas de la población (salud, educación, seguridad).",
+                fraserDebrief: "Nancy Fraser recalca que la injusticia económica requiere una reestructuración de la distribución de la riqueza a través de mecanismos impositivos justos y solidarios que superen la explotación estructural.",
+                peaceAccord: "Punto 6 del Acuerdo de Paz: Mecanismos de implementación, verificación, priorización presupuestal y sostenibilidad fiscal del posconflicto."
+            }
+        ];
+
+        // State variables
+        let currentDilemmaIndex = 0;
+        let timerInterval = null;
+        let timeLeft = 30;
+        let chartInstance = null;
+        let radarChartInstance = null;
+        let sessionScores = { sen: [], fraser: [], peace: [] };
+        let isVoterMode = false;
+        let hasVotedCurrent = false;
+
+        // On Load initialization
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            isVoterMode = urlParams.get('mode') === 'voter';
+
+            let baseUrl = window.location.origin + window.location.pathname;
+            
+            // Check if URL is blob: or local file preview
+            if (baseUrl.startsWith('blob:') || baseUrl.startsWith('about:')) {
+                const blobWarning = document.getElementById('blobWarning');
+                if (blobWarning) blobWarning.classList.remove('hidden');
+                baseUrl = "https://ctiquen.github.io/Simulador_Pol-tica_P-blica/";
+            }
+            
+            // Generate Voter Link for QR
+            const voterUrl = baseUrl + (baseUrl.includes('?') ? '&' : '?') + "mode=voter";
+            document.getElementById('qrUrlInput').value = voterUrl;
+
+            if (isVoterMode) {
+                document.getElementById('roleBadgeText').innerText = "Modo Estudiante / Votante";
+                document.getElementById('roleBadge').className = "hidden sm:inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-emerald-900/60 text-emerald-300 border border-emerald-700/50";
+                showScreen(document.getElementById('screen-voter-waiting'));
+            }
+        });
+
+        // Realtime Firebase Listener Setup
+        window.initRealtimeListeners = function() {
+            if (!window.onSnapshot || !window.sessionDocRef) return;
+
+            window.onSnapshot(window.sessionDocRef, (snapshot) => {
+                if (!snapshot.exists()) return;
+                const data = snapshot.data();
+
+                if (data.votesMap && dilemmas[data.currentDilemmaIndex]) {
+                    dilemmas[data.currentDilemmaIndex].options.forEach((opt, idx) => {
+                        opt.votes = data.votesMap[idx] || 0;
+                    });
+                }
+
+                if (isVoterMode) {
+                    // Update Student UI based on Host state
+                    if (data.activeState === 'dilemma') {
+                        if (currentDilemmaIndex !== data.currentDilemmaIndex) {
+                            currentDilemmaIndex = data.currentDilemmaIndex;
+                            hasVotedCurrent = false;
+                        }
+                        loadDilemma(currentDilemmaIndex);
+                        showScreen(screenDilemma);
+
+                        if (hasVotedCurrent) {
+                            document.getElementById('voterSubmittedMsg').classList.remove('hidden');
+                        } else {
+                            document.getElementById('voterSubmittedMsg').classList.add('hidden');
+                        }
+                    } else if (data.activeState === 'results') {
+                        showResultsView(false);
+                    } else if (data.activeState === 'debrief') {
+                        goToDebrief(false);
+                    } else if (data.activeState === 'report') {
+                        showReportView(false);
+                    } else {
+                        showScreen(document.getElementById('screen-voter-waiting'));
+                    }
+                } else {
+                    // Refresh chart for presenter if votes updated
+                    if (!screenResults.classList.contains('hidden') && dilemmas[currentDilemmaIndex]) {
+                        renderResultsChart(dilemmas[currentDilemmaIndex]);
+                    }
+                }
+            }, (error) => {
+                console.warn("Firestore snapshot error:", error);
+            });
+        };
+
+        function syncSessionState(stateName) {
+            if (!window.setDoc || !window.sessionDocRef || isVoterMode) return;
+            const votesMap = {};
+            dilemmas[currentDilemmaIndex].options.forEach((o, i) => votesMap[i] = o.votes);
+
+            window.setDoc(window.sessionDocRef, {
+                activeState: stateName,
+                currentDilemmaIndex: currentDilemmaIndex,
+                votesMap: votesMap,
+                updatedAt: Date.now()
+            }, { merge: true }).catch(err => console.warn("Sync error:", err));
+        }
+
+        // QR Code Modal Functions
+        function openQRModal() {
+            const qrModal = document.getElementById('qrModal');
+            qrModal.classList.remove('hidden');
+            qrModal.classList.add('flex');
+            
+            let targetUrl = document.getElementById('qrUrlInput').value;
+            generateQR(targetUrl);
+        }
+
+        function closeQRModal() {
+            const qrModal = document.getElementById('qrModal');
+            qrModal.classList.remove('flex');
+            qrModal.classList.add('hidden');
+        }
+
+        function generateQR(text) {
+            const qrContainer = document.getElementById('qrcodeCanvas');
+            qrContainer.innerHTML = '';
+            
+            new QRCode(qrContainer, {
+                text: text,
+                width: 220,
+                height: 220,
+                colorDark : "#090d16",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
+        }
+
+        function updateQRCode() {
+            const newUrl = document.getElementById('qrUrlInput').value;
+            if (newUrl.trim() !== '') {
+                generateQR(newUrl.trim());
+            }
+        }
+
+        function copyCurrentURL() {
+            const input = document.getElementById('qrUrlInput');
+            input.select();
+            document.execCommand('copy');
+            alert('URL para votar copiada al portapapeles');
+        }
+
+        // DOM Elements & Navigation
+        const screenIntro = document.getElementById('screen-intro');
+        const screenDilemma = document.getElementById('screen-dilemma');
+        const screenResults = document.getElementById('screen-results');
+        const screenDebrief = document.getElementById('screen-debrief');
+        const screenReport = document.getElementById('screen-report');
+
+        function showScreen(targetScreen) {
+            [screenIntro, screenDilemma, screenResults, screenDebrief, screenReport, document.getElementById('screen-voter-waiting')].forEach(s => {
+                if (s) s.classList.add('hidden');
+            });
+            targetScreen.classList.remove('hidden');
+        }
+
+        function startSimulation() {
+            currentDilemmaIndex = 0;
+            sessionScores = { sen: [], fraser: [], peace: [] };
+            loadDilemma(currentDilemmaIndex);
+            showScreen(screenDilemma);
+            syncSessionState('dilemma');
+        }
+
+        function loadDilemma(index) {
+            const d = dilemmas[index];
+            document.getElementById('dilemmaCounter').innerText = `Dilema ${index + 1} de ${dilemmas.length}`;
+            document.getElementById('dilemmaCategoryTag').innerText = d.category;
+            document.getElementById('progressBar').style.width = `${((index + 1) / dilemmas.length) * 100}%`;
+            
+            document.getElementById('dilemmaTitle').innerText = d.title;
+            document.getElementById('dilemmaContext').innerText = d.context;
+
+            const optionsContainer = document.getElementById('optionsContainer');
+            optionsContainer.innerHTML = '';
+
+            d.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full text-left p-4 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-800/80 hover:border-indigo-500/50 transition-all group flex items-start space-x-3";
+                btn.onclick = () => selectOption(idx);
+                btn.innerHTML = `
+                    <div class="w-6 h-6 rounded-full bg-slate-800 group-hover:bg-indigo-600 text-slate-300 group-hover:text-white flex items-center justify-center text-xs font-bold transition-all shrink-0 mt-0.5 border border-slate-700">
+                        ${String.fromCharCode(65 + idx)}
+                    </div>
+                    <span class="text-xs sm:text-sm text-slate-200 group-hover:text-white leading-relaxed">${opt.text}</span>
+                `;
+                optionsContainer.appendChild(btn);
+            });
+
+            resetTimer();
+        }
+
+        function resetTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timeLeft = 30;
+            document.getElementById('timerDisplay').innerText = `${timeLeft}s`;
+            document.getElementById('timerIcon').className = "w-10 h-10 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-lg border border-amber-500/30";
+        }
+
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timerDisplay').innerText = `${timeLeft}s`;
+                if (timeLeft <= 5) {
+                    document.getElementById('timerIcon').className = "w-10 h-10 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-lg border border-rose-500/50 animate-pulse";
+                }
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    simulateAudienceVotes();
+                }
+            }, 1000);
+        }
+
+        function simulateAudienceVotes() {
+            if (timerInterval) clearInterval(timerInterval);
+            showResultsView(true);
+        }
+
+        function selectOption(optionIndex) {
+            if (hasVotedCurrent && isVoterMode) return;
+
+            const d = dilemmas[currentDilemmaIndex];
+            d.options[optionIndex].votes += 1;
+            hasVotedCurrent = true;
+
+            if (window.setDoc && window.sessionDocRef) {
+                const votesMap = {};
+                d.options.forEach((o, i) => votesMap[i] = o.votes);
+                window.setDoc(window.sessionDocRef, { votesMap: votesMap }, { merge: true });
+            }
+
+            if (isVoterMode) {
+                document.getElementById('voterSubmittedMsg').classList.remove('hidden');
+            } else {
+                showResultsView(true);
+            }
+        }
+
+        function showResultsView(broadcast = true) {
+            const d = dilemmas[currentDilemmaIndex];
+            
+            let bestOpt = d.options[0];
+            d.options.forEach(o => { if (o.votes > bestOpt.votes) bestOpt = o; });
+            
+            sessionScores.sen.push(bestOpt.senImpact);
+            sessionScores.fraser.push(bestOpt.fraserImpact);
+            sessionScores.peace.push(bestOpt.peaceImpact);
+
+            document.getElementById('winningOptionText').innerText = bestOpt.text;
+            document.getElementById('trendSummaryText').innerText = bestOpt.explanation;
+
+            showScreen(screenResults);
+            renderResultsChart(d);
+
+            if (broadcast) syncSessionState('results');
+        }
+
+        function renderResultsChart(d) {
+            const ctx = document.getElementById('resultsChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Opción A', 'Opción B', 'Opción C', 'Opción D'],
+                    datasets: [{
+                        label: 'Votos de la Audiencia',
+                        data: d.options.map(o => o.votes),
+                        backgroundColor: [
+                            'rgba(99, 102, 241, 0.7)',
+                            'rgba(16, 185, 129, 0.7)',
+                            'rgba(245, 158, 11, 0.7)',
+                            'rgba(244, 63, 94, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgba(99, 102, 241, 1)',
+                            'rgba(16, 185, 129, 1)',
+                            'rgba(245, 158, 11, 1)',
+                            'rgba(244, 63, 94, 1)'
+                        ],
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0, color: '#94a3b8', font: { size: 11 } },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8', font: { size: 11 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        function goToDebrief(broadcast = true) {
+            const d = dilemmas[currentDilemmaIndex];
+            document.getElementById('debriefTitle').innerText = `Debrief: ${d.title}`;
+            document.getElementById('senDebriefText').innerHTML = d.senDebrief;
+            document.getElementById('fraserDebriefText').innerHTML = d.fraserDebrief;
+            document.getElementById('peaceAccordionText').innerHTML = d.peaceAccord;
+
+            const nextBtnText = document.getElementById('nextButtonText');
+            if (currentDilemmaIndex === dilemmas.length - 1) {
+                nextBtnText.innerText = "Ver Reporte de Gestión Final";
+            } else {
+                nextBtnText.innerText = "Siguiente Dilema";
+            }
+
+            showScreen(screenDebrief);
+            if (broadcast) syncSessionState('debrief');
+        }
+
+        function nextDilemma() {
+            currentDilemmaIndex++;
+            hasVotedCurrent = false;
+            if (currentDilemmaIndex < dilemmas.length) {
+                loadDilemma(currentDilemmaIndex);
+                showScreen(screenDilemma);
+                syncSessionState('dilemma');
+            } else {
+                showReportView(true);
+            }
+        }
+
+        function showReportView(broadcast = true) {
+            showScreen(screenReport);
+
+            const avgSen = Math.round(sessionScores.sen.reduce((a,b)=>a+b, 0) / (sessionScores.sen.length || 1));
+            const avgFraser = Math.round(sessionScores.fraser.reduce((a,b)=>a+b, 0) / (sessionScores.fraser.length || 1));
+            const avgPeace = Math.round(sessionScores.peace.reduce((a,b)=>a+b, 0) / (sessionScores.peace.length || 1));
+
+            document.getElementById('indexSen').innerText = `${avgSen}%`;
+            document.getElementById('indexFraser').innerText = `${avgFraser}%`;
+            document.getElementById('indexPeace').innerText = `${avgPeace}%`;
+
+            renderRadarChart(avgSen, avgFraser, avgPeace);
+            if (broadcast) syncSessionState('report');
+        }
+
+        function renderRadarChart(sen, fraser, peace) {
+            const ctx = document.getElementById('summaryRadarChart').getContext('2d');
+            if (radarChartInstance) radarChartInstance.destroy();
+
+            radarChartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['Capacidades (Sen)', 'Redistribución (Fraser)', 'Reconocimiento', 'Representación', 'Sostenibilidad Paz'],
+                    datasets: [{
+                        label: 'Desempeño de la Sesión',
+                        data: [sen, fraser, Math.round((sen+fraser)/2), fraser, peace],
+                        backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                        borderColor: 'rgba(99, 102, 241, 1)',
+                        pointBackgroundColor: 'rgba(16, 185, 129, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                            ticks: { display: false, max: 100, min: 0 }
+                        }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        // Modal Helpers
+        function openResetModal() {
+            document.getElementById('modalTitle').innerText = "Reiniciar Simulador";
+            document.getElementById('modalMessage').innerText = "¿Deseas reiniciar toda la sesión de votación y volver al inicio?";
+            document.getElementById('customModal').classList.remove('hidden');
+            document.getElementById('customModal').classList.add('flex');
+        }
+
+        function closeModal() {
+            document.getElementById('customModal').classList.remove('flex');
+            document.getElementById('customModal').classList.add('hidden');
+            currentDilemmaIndex = 0;
+            hasVotedCurrent = false;
+            dilemmas.forEach(d => d.options.forEach(o => o.votes = 0));
+            showScreen(screenIntro);
+            syncSessionState('intro');
+        }
+    </script>
+</body>
+</html>
